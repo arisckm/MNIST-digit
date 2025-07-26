@@ -2,11 +2,10 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageOps
-import cv2
 from streamlit_drawable_canvas import st_canvas
+import os
 
 # Load trained model
-import os
 model_path = os.path.join(os.path.dirname(__file__), "mn.h5")
 model = tf.keras.models.load_model(model_path)
 
@@ -17,21 +16,19 @@ st.sidebar.title("✏️ Input Method")
 input_mode = st.sidebar.radio("Choose how to provide a digit:", ("Upload Image", "Draw on Canvas"))
 
 def preprocess_image(pil_image):
-    pil_image = pil_image.convert('L')           # Convert to grayscale
-    pil_image = ImageOps.invert(pil_image)        # Invert (white digit on black bg)
-
-    img = np.array(pil_image)
-
-    # Thresholding to clean noise
-    _, img = cv2.threshold(img, 20, 255, cv2.THRESH_BINARY)
-
-    # Find digit contour
-    contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if contours:
-        x, y, w, h = cv2.boundingRect(contours[0])
-        img = img[y:y+h, x:x+w]  # Crop to bounding box
+    pil_image = pil_image.convert("L")  # Convert to grayscale
+    pil_image = ImageOps.invert(pil_image)  # Invert (white digits on black background)
 
     # Resize maintaining aspect ratio
+    img = np.array(pil_image)
+    img = (img > 20).astype(np.uint8) * 255  # Threshold
+    nonzero = np.argwhere(img)
+    if nonzero.size > 0:
+        top_left = nonzero.min(axis=0)
+        bottom_right = nonzero.max(axis=0)
+        img = img[top_left[0]:bottom_right[0]+1, top_left[1]:bottom_right[1]+1]
+
+    # Resize to 20x20 and pad to 28x28
     h, w = img.shape
     if h > w:
         new_h = 20
@@ -39,20 +36,23 @@ def preprocess_image(pil_image):
     else:
         new_w = 20
         new_h = int(h * (20.0 / w))
-    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # Pad to 28x28
-    padded = np.pad(img, (((28 - new_h) // 2, (28 - new_h + 1) // 2),
-                          ((28 - new_w) // 2, (28 - new_w + 1) // 2)), 'constant', constant_values=0)
+    img = Image.fromarray(img).resize((new_w, new_h), Image.ANTIALIAS)
+    img = np.array(img)
 
-    # Normalize
+    padded = np.pad(
+        img,
+        (((28 - new_h) // 2, (28 - new_h + 1) // 2),
+         ((28 - new_w) // 2, (28 - new_w + 1) // 2)),
+        mode='constant', constant_values=0
+    )
+
     padded = padded.astype("float32") / 255.0
-
     st.image(padded, caption="🖼️ Processed Input (28x28)", width=150, clamp=True)
 
     return padded.reshape(1, 28, 28, 1)
 
-# Upload
+# Upload Image
 if input_mode == "Upload Image":
     uploaded_file = st.file_uploader("Upload an image (digit on white background)", type=["png", "jpg", "jpeg"])
     if uploaded_file:
@@ -62,7 +62,7 @@ if input_mode == "Upload Image":
         prediction = model.predict(processed)
         st.success(f"🎯 Predicted Digit: **{np.argmax(prediction)}**")
 
-# Draw
+# Draw on Canvas
 else:
     st.write("🎨 Draw a digit (0–9) below:")
     canvas_result = st_canvas(
