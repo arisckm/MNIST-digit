@@ -4,22 +4,11 @@ import tensorflow as tf
 from PIL import Image, ImageOps
 from streamlit_drawable_canvas import st_canvas
 import os
-import zipfile
 
-# === Model Loading ===
-base_path = os.path.dirname(__file__)
-zip_path = os.path.join(base_path, "saved_model.zip")
-extract_path = os.path.join(base_path, "saved_model")
+# Load model saved in native Keras (.keras) format
+model_path = os.path.join(os.path.dirname(__file__), "mnist_model.keras")
+model = tf.keras.models.load_model(model_path)
 
-# Unzip once
-if not os.path.exists(extract_path):
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_path)
-
-# Load SavedModel
-model = tf.keras.models.load_model(extract_path)
-
-# === Streamlit App ===
 st.set_page_config(page_title="Digit Recognizer", layout="centered")
 st.title("🧠 MNIST Handwritten Digit Recognizer")
 
@@ -27,29 +16,30 @@ st.sidebar.title("✏️ Input Method")
 input_mode = st.sidebar.radio("Choose how to provide a digit:", ("Upload Image", "Draw on Canvas"))
 
 def preprocess_image(pil_image):
-    pil_image = pil_image.convert("L")  # Grayscale
-    pil_image = ImageOps.invert(pil_image)  # Invert (white digits on black)
+    pil_image = pil_image.convert("L")  # Convert to grayscale
+    pil_image = ImageOps.invert(pil_image)  # Invert (white digits on black background)
 
-    # Resize and threshold
+    # Convert to numpy and threshold
     img = np.array(pil_image)
     img = (img > 20).astype(np.uint8) * 255
+
+    # Crop non-zero area
     nonzero = np.argwhere(img)
     if nonzero.size > 0:
         top_left = nonzero.min(axis=0)
         bottom_right = nonzero.max(axis=0)
         img = img[top_left[0]:bottom_right[0]+1, top_left[1]:bottom_right[1]+1]
 
+    # Resize while maintaining aspect ratio
     h, w = img.shape
     if h > w:
-        new_h = 20
-        new_w = int(w * (20.0 / h))
+        new_h, new_w = 20, int(w * (20.0 / h))
     else:
-        new_w = 20
-        new_h = int(h * (20.0 / w))
-
+        new_w, new_h = 20, int(h * (20.0 / w))
     img = Image.fromarray(img).resize((new_w, new_h), Image.ANTIALIAS)
     img = np.array(img)
 
+    # Pad to 28x28
     padded = np.pad(
         img,
         (((28 - new_h) // 2, (28 - new_h + 1) // 2),
@@ -59,7 +49,6 @@ def preprocess_image(pil_image):
 
     padded = padded.astype("float32") / 255.0
     st.image(padded, caption="🖼️ Processed Input (28x28)", width=150, clamp=True)
-
     return padded.reshape(1, 28, 28, 1)
 
 # Upload Image
