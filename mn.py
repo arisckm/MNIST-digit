@@ -6,7 +6,9 @@ import cv2
 from streamlit_drawable_canvas import st_canvas
 
 # Load trained model
-model = tf.keras.models.load_model("mn.h5")
+import os
+model_path = os.path.join(os.path.dirname(__file__), "mn.h5")
+model = tf.keras.models.load_model(model_path)
 
 st.set_page_config(page_title="Digit Recognizer", layout="centered")
 st.title("🧠 MNIST Handwritten Digit Recognizer")
