@@ -4,11 +4,22 @@ import tensorflow as tf
 from PIL import Image, ImageOps
 from streamlit_drawable_canvas import st_canvas
 import os
+import zipfile
 
-# Load trained model
-model_path = os.path.join(os.path.dirname(__file__), "mn.h5")
-model = tf.keras.models.load_model(model_path)
+# === Model Loading ===
+base_path = os.path.dirname(__file__)
+zip_path = os.path.join(base_path, "saved_model.zip")
+extract_path = os.path.join(base_path, "saved_model")
 
+# Unzip once
+if not os.path.exists(extract_path):
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_path)
+
+# Load SavedModel
+model = tf.keras.models.load_model(extract_path)
+
+# === Streamlit App ===
 st.set_page_config(page_title="Digit Recognizer", layout="centered")
 st.title("🧠 MNIST Handwritten Digit Recognizer")
 
@@ -16,19 +27,18 @@ st.sidebar.title("✏️ Input Method")
 input_mode = st.sidebar.radio("Choose how to provide a digit:", ("Upload Image", "Draw on Canvas"))
 
 def preprocess_image(pil_image):
-    pil_image = pil_image.convert("L")  # Convert to grayscale
-    pil_image = ImageOps.invert(pil_image)  # Invert (white digits on black background)
+    pil_image = pil_image.convert("L")  # Grayscale
+    pil_image = ImageOps.invert(pil_image)  # Invert (white digits on black)
 
-    # Resize maintaining aspect ratio
+    # Resize and threshold
     img = np.array(pil_image)
-    img = (img > 20).astype(np.uint8) * 255  # Threshold
+    img = (img > 20).astype(np.uint8) * 255
     nonzero = np.argwhere(img)
     if nonzero.size > 0:
         top_left = nonzero.min(axis=0)
         bottom_right = nonzero.max(axis=0)
         img = img[top_left[0]:bottom_right[0]+1, top_left[1]:bottom_right[1]+1]
 
-    # Resize to 20x20 and pad to 28x28
     h, w = img.shape
     if h > w:
         new_h = 20
